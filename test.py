@@ -101,6 +101,7 @@ def get_monodromy_identity_equations_split(period: int, energy_param: str = 'z',
     return equations
 
 
+
 def find_closed_gaps_minimal_equations(period: int) -> dict:
     """
     Find the maximum number of closed gaps using split monodromy identity for efficiency.
