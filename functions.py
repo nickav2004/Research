@@ -1,6 +1,8 @@
+from typing import Any
 import sympy as sp
 from sympy import MutableDenseMatrix
 from sympy.plotting import plot
+from IPython.display import display, Markdown
 
 
 def create_potential_symbols(period):
@@ -33,7 +35,7 @@ def create_transfer_matrix(potential_index, v_list, energy_param='z'):
     v_n = v_list[potential_index]
 
     transfer_matrix: MutableDenseMatrix = sp.Matrix([[energy - v_n, -1],
-                   [1, 0]])
+                                                     [1, 0]])
     return transfer_matrix
 
 
@@ -122,18 +124,20 @@ def analyze_spectrum_bands(trace_expr, energy_param='z', z_range=(-5, 5)):
     p1.show()
 
 
-def cycle_potentials(equation, potentials, num_potentials):
+def cycle_potentials(equation, potentials):
     """
     Cycles through potentials in an equation, where V_1 -> V_2, V_2 -> V_3, ..., V_n -> V_1
 
     Parameters:
     equation: sympy equation or expression
-    potentials: list of sympy symbols representing potentials
+    potentials: list of sympy symbols representing potentialsa
     num_potentials: int, number of potentials
 
     Returns:
     list: List of equations with cycled potentials
     """
+    num_potentials = len(potentials)
+
     cycled_equations = []
 
     # Start with the original equation
@@ -207,3 +211,120 @@ def is_irreducible(potentials):
 
     # If all shifts are distinct, the number of unique shifts equals the period
     return len(unique_shifts) == period
+
+
+def compute_periodic_schrodinger_system(period: int, energy_param: str = 'z') -> tuple[
+    MutableDenseMatrix, object, list[Any]]:
+    """
+    Compute the monodromy matrix and discriminant for a discrete periodic Schrödinger operator
+
+    Parameters:
+    period (int): Period of the potential
+    energy_param (str): Energy parameter symbol (default 'z')
+
+    Returns:
+    tuple: (monodromy_matrix, discriminant, potential_variables)
+    """
+    display(Markdown(f"$\\text{{Computing periodic Schrödinger system for: }}\\Phi_v({energy_param})$"))
+    print(f"Period: {period}")
+    print(f"Energy parameter: {energy_param}")
+    print("=" * 50)
+
+    # Compute monodromy matrix
+    monodromy, potentials = compute_monodromy_matrix(period, energy_param)
+
+    # Compute discriminant
+    discriminant = compute_trace_and_discriminant(monodromy)
+
+    return monodromy, discriminant, potentials
+
+
+def compute_split_monodromy_identity(period: int, energy_param: str = 'z', sign: int = 1) -> tuple:
+    """
+    Compute monodromy using the identity M = ±I by splitting transfer matrices.
+    Uses the fact that T_1 * T_2 * ... * T_m = ±(T_{m+1} * ... * T_p)^{-1}
+    where m = ceil(p/2)
+
+    Parameters:
+    period (int): Period of the potential
+    energy_param (str): Energy parameter symbol
+    sign (int): +1 for M = I, -1 for M = -I
+
+    Returns:
+    tuple: (left_product, right_product_inverse, potential_variables)
+    """
+    import math
+
+    # Create potential symbols
+    v_list = create_potential_symbols(period)
+
+    # Split point - use ceiling to handle odd periods
+    m = math.ceil(period / 2)
+
+    # Compute left product: T_1 * T_2 * ... * T_m
+    left_product = sp.eye(2)
+    for i in range(m):
+        t_i = create_transfer_matrix(i, v_list, energy_param)
+        left_product = t_i * left_product
+
+    # Compute right product: T_{m+1} * ... * T_p
+    right_product = sp.eye(2)
+    for i in range(m, period):
+        t_i = create_transfer_matrix(i, v_list, energy_param)
+        right_product = t_i * right_product
+
+    # Compute inverse of the right product
+    right_product_inverse = right_product.inv()
+
+    return left_product, sign * right_product_inverse, v_list
+
+
+def get_monodromy_identity_equations_split(period: int, energy_param: str = 'z', sign: int = 1) -> list:
+    """
+    Get simplified equations using split monodromy identity.
+    Returns equations of the form: left_product - sign * right_product_inverse = 0
+
+    Parameters:
+    period (int): Period of the potential
+    energy_param (str): Energy parameter symbol
+    sign (int): +1 for M = I, -1 for M = -I
+
+    Returns:
+    list: List of simplified equations (one for each matrix entry)
+    """
+    left_product, right_product_inverse, v_list = compute_split_monodromy_identity(period, energy_param, sign)
+
+    equations = []
+    # Generate equations for each matrix entry: left[i,j] - right[i,j] = 0
+    for i in range(2):
+        for j in range(2):
+            eq = sp.Eq(left_product[i, j] - right_product_inverse[i, j], 0)
+            equations.append(eq.simplify())
+
+    return equations
+
+
+def analyze_solutions(solution_sets, variables):
+    print()
+    print("=" * 100, "\n")
+    if solution_sets:
+        print("=== SOLUTION ANALYSIS ===")
+
+        for i, solution_dict in enumerate(solution_sets):
+            print(f"\nSolution set {i + 1}:")
+
+            # Convert to list format
+            solution_list = [solution_dict.get(var, var) for var in variables]
+            print(f"As list: {solution_list}")
+
+            # Check if irreducible
+            is_solution_irreducible = is_irreducible(solution_list)
+            print(f"Is irreducible: {is_solution_irreducible}")
+
+            # Print individual values
+            for var in variables:
+                value = solution_dict.get(var, var)
+                print(f"{var}: {value}")
+
+    else:
+        print("No solutions found!")
